@@ -24,6 +24,7 @@ from numpy.linalg import norm
 import scipy.stats as st
 from os.path import join
 import os
+#these are still libraries
 
 from sklearn.neighbors import KernelDensity
 from sklearn.model_selection import GridSearchCV
@@ -37,7 +38,9 @@ import pandas as pd
 import seaborn as sns
 
 plt.ioff()
+#plot formatting
 
+#def = define function; in this case... allows argument input into terminal.. 
 def parse_arguments():
     ap = argparse.ArgumentParser(description="Parse arguments")
 
@@ -60,7 +63,7 @@ def parse_arguments():
 
     return ap.parse_args()
 
-
+#this function writes gatefiles that can be opened in flowjo specifically
 def gate_writer(vertices1, vertices2, boundaries, filename, channame1=None, channame2=None, fluorophore1=None, fluorophore2=None):
     gate_text = ['<?xml version="1.0" encoding="UTF-8"?>',
     '<gating:Gating-ML',
@@ -178,6 +181,7 @@ def gate_writer(vertices1, vertices2, boundaries, filename, channame1=None, chan
             if line not in ['\n', '\r\n']:
                 f.write("%s\n" % line)
 
+#selection for the first gate
 def fitEllipse(x,y):
     x = x[:,np.newaxis]
     y = y[:,np.newaxis]
@@ -202,7 +206,8 @@ def fitEllipse(x,y):
     ell=Ellipse((cx,cy),a*2.,b*2.,angle)
     ell_coord=ell.get_verts()
     return ell_coord
-    
+
+#kde = kernel density estimation; matching density to color    
 def make_kde(points):
     x = points[:, 0]
     y = points[:, 1]
@@ -228,12 +233,14 @@ def make_kde(points):
     return [cset1.allsegs, figure_centre, x, y]
 
 
+#similar to above
 def getKernelDensityEstimation(values, x, bandwidth = 0.2, kernel = 'gaussian'):
     model = KernelDensity(kernel = kernel, bandwidth=bandwidth)
     model.fit(values[:, np.newaxis])
     log_density = model.score_samples(x[:, np.newaxis])
     return np.exp(log_density)
 
+#a helper function for kde color matching
 def bestBandwidth(data, minBandwidth = 0.1, maxBandwidth = 2, nb_bandwidths = 30, cv = 30):
     """
     Run a cross validation grid search to identify the optimal bandwidth for the kernel density
@@ -245,6 +252,7 @@ def bestBandwidth(data, minBandwidth = 0.1, maxBandwidth = 2, nb_bandwidths = 30
     return model.best_params_['bandwidth']
 
 
+#possibly for defining the last gate
 def z(samplename, Z, a, vertices1, vertices2, dest, sample, fluorophore1, fluorophore2, channame1, channame2):
     fluorophores = fluorophore1 + '_' + fluorophore2
     filename = join(dest, 'gates.xml')
@@ -322,20 +330,27 @@ def z(samplename, Z, a, vertices1, vertices2, dest, sample, fluorophore1, fluoro
     x = d[:, 0]
     y = d[:, 1]
     x_sorted, y_sorted, kde_sorted = x[idx], y[idx], kde[idx]
-    plt.scatter(x, y, c=kde, cmap = 'jet', s=12.5)
+    # parameters of the main output plot
+    plt.scatter(x, y, c=kde, cmap = 'turbo', s=15)
     plt.yscale('symlog', linthreshy=1000)
     plt.xscale('symlog', linthreshx=1000)
+    #these are gate lines; min, max are the range of point values; best points define position of the gate
     plt.plot([min(x), max(x)], [best_top_point, best_top_point], c='black')
     plt.plot([best_right_point, best_right_point], [min(y), max(y)], c='black')
+    #df is a table format for... parsed.. data..
     df = gs_results.report
     df = df.reset_index()
+    #numbers of each individual quadrant
     double_positives = list(df.loc[df['gate_id'] == 'And3DoublePositive']['count'])[0]
     green = list(df.loc[df['gate_id'] == 'And5' + fluorophore2]['count'])[0]
     red = list(df.loc[df['gate_id'] == 'And4' + fluorophore1]['count'])[0]
     untransfected = list(df.loc[df['gate_id'] == 'And2Untransfected']['count'])[0]
+    #this is a contingency for blank samples
     if double_positives + green + red == 0:
         return [samplename, 0, None, 0]
+    #defining the FETCH  score
     FETCH_score = double_positives/(double_positives + green + red)
+    #another contingency
     if FETCH_score > 0.90 or untransfected/(double_positives + green + red + untransfected) > 0.90:
         return [samplename, 0, None, double_positives + green + red + untransfected]
     r_g = red/green
@@ -349,24 +364,29 @@ def z(samplename, Z, a, vertices1, vertices2, dest, sample, fluorophore1, fluoro
     ax.tick_params(which='major', length=20, width=3)
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor", fontsize=14)
     plt.setp(ax.get_yticklabels(), fontsize=14)
+    #text boxes in the output plot
     txt1 = AnchoredText('Q1\n' + str(round(100*red/(double_positives + green + red + untransfected), 1)), loc="upper left", pad=0.4, borderpad=0, prop={"fontsize":14})
     txt2 = AnchoredText('Q2\n' + str(round(100*double_positives/(double_positives + green + red + untransfected), 1)), loc="upper right", pad=0.4, borderpad=0, prop={"fontsize":14})
     txt3 = AnchoredText('Q3\n' + str(round(100*green/(double_positives + green + red + untransfected), 1)), loc="lower right", pad=0.4, borderpad=0, prop={"fontsize":14})
     txt4 = AnchoredText('Q4\n' + str(round(100*untransfected/(double_positives + green + red + untransfected), 1)), loc="lower left", pad=0.4, borderpad=0, prop={"fontsize":14})
+    #this puts texts boxes onto the plot
     ax.add_artist(txt1)
     ax.add_artist(txt2)
     ax.add_artist(txt3)
     ax.add_artist(txt4)
     ax.set_title("FETCH Score: " + str(FETCH_score))
+    #look into the bbox, bounding box
     plt.savefig(join(dest, fluorophores + '_double_positive_final.pdf'), format='pdf', bbox_inches='tight')
+    #clear axes and figure to plot next
     plt.cla()
     plt.clf()
     return [samplename, FETCH_score, r_g, double_positives + green + red + untransfected]
 
-    
+ #Above, the helper files were added, Below here, the actual processing, central functions are listed
 def FETCH_analysis(inputlist):
     plt.close('all')
     fcs_path, samplename, dest = inputlist
+    #make a directly for an FCS file and use flowkit to parse that, to get variable called sample
     os.mkdir(dest)
     plt.grid(b=None)
     sample = fk.Sample(fcs_path)
@@ -385,8 +405,10 @@ def FETCH_analysis(inputlist):
         Z_ar = np.stack((arr5, arr6), axis=1)
     else:
         raise Exception("Something is wrong with your channel number")
+        #arr = array, plot.. x = 1st gate and y = 2nd gate
     X = np.stack((arr2, arr1), axis=1)
-    Y = np.stack((arr1, arr3), axis=1)      
+    Y = np.stack((arr1, arr3), axis=1)     
+    #this loop goes through the contours of the first gate 
     [alls, figure_centre, x, y] = make_kde(X)
     max_area = 0
     best_seg = None
@@ -422,13 +444,17 @@ def FETCH_analysis(inputlist):
             if item[1] < smallest_area:
                 smallest_area = item[1]
                 best_seg = alls[item[0]][item[2]]
-    vertices1 = np.round(fitEllipse(best_seg[:,0],best_seg[:,1]), 0)  
+    #fitting an elipse to our identified best fit contour
+    vertices1 = np.round(fitEllipse(best_seg[:,0],best_seg[:,1]), 0) 
+    #generates the .xml file 
     filename = join(dest, 'gates.xml')
     gate_writer(vertices1, None, None, filename)
     g_strat = fk.parse_gating_xml(filename)    
     gs_results = g_strat.gate_sample(sample, gate_id='Polygon1')
+    #gets the indices of selected cells to move into gate 2
     a = gs_results.get_gate_indices(gate_id='Polygon1')
     b = Y[a]
+    #len= length; a contingency
     if len(b) == 0:
         return [samplename, 0, None, 0]
     plt.scatter(X[:, 0], X[:, 1], c=a, s=12.5)
@@ -534,7 +560,7 @@ def summarize(outputs, fcs_folder, project_name, skip_renaming):
 
     dataf = dataf.set_index("File")
     dataf.to_csv(join(fcs_folder, project_name + ".csv"))
-
+#identify which folder contains our fcs files, etc.
 def main(args):
     fcs_folder = args.folder
     project_name = args.project
@@ -551,8 +577,9 @@ def main(args):
     for inp in inpts:
         outstuff.append(FETCH_analysis(inp)) 
     outputs = np.array(outstuff)
+    #draws the aggregate plot figure and table comparing FETCH scores
     summarize(outputs, fcs_folder, project_name, skip_renaming)
-
+#this is where the code actually starts; runs 'main', above
 if __name__ == '__main__':
     args = parse_arguments()
     main(args)
